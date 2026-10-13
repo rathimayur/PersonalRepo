@@ -1,5 +1,6 @@
 import os
 import requests
+from playwright.sync_api import sync_playwright
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -11,8 +12,12 @@ TARGET_URL = (
     "hop=direct&pf=mobile&src=h&"
 )
 
-# Target substring to check
-NO_RESULT_SUBSTRING = "there were no results found"
+# Negative indicator phrases from the screen
+NEGATIVE_INDICATORS = [
+    "there were no results found",
+    "request waitlist priority booking",
+    "plese modify your search"
+]
 
 def send_alert(message: str):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -33,28 +38,32 @@ def send_alert(message: str):
         print(f"Failed to send Telegram alert: {e}")
 
 def check_availability():
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
-            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.bhagyalaxmitravels.com/",
-    }
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        # Emulate mobile screen matching the mobile site parameter
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            viewport={"width": 390, "height": 844}
+        )
+        page = context.new_page()
 
-    try:
-        response = requests.get(TARGET_URL, headers=headers, timeout=20)
-        response.raise_for_status()
+        print(f"Loading {TARGET_URL}...")
+        page.goto(TARGET_URL, wait_until="networkidle", timeout=45000)
 
-        # Convert entire response body to lowercase for case-insensitive matching
-        page_html_lower = response.text.lower()
+        # Wait an extra 3 seconds for client-side JavaScript templates to bind
+        page.wait_for_timeout(3000)
 
-        # Check if the "no results" text is contained anywhere in the response
-        if NO_RESULT_SUBSTRING in page_html_lower:
-            print("Status: 'There were no results found' is present. Booking is NOT open yet.")
+        # Extract all rendered text from the document body
+        rendered_text = page.inner_text("body").lower()
+        browser.close()
+
+        # Check if ANY negative indicator exists in the rendered text
+        is_negative_found = any(phrase in rendered_text for phrase in NEGATIVE_INDICATORS)
+
+        if is_negative_found:
+            print("Status: Negative scenario detected ('no results found' / 'waitlist'). Booking is NOT open yet.")
         else:
-            print("Status: 'There were no results found' NOT found. Booking is OPEN!")
+            print("Status: Negative scenario NOT detected. Booking is OPEN!")
             alert_msg = (
                 "🚨 <b>Bhagyalaxmi Travels Alert!</b>\n\n"
                 "Booking is <b>OPEN</b> for Pune ➡️ Jalgaon on 05-Nov-2026!\n\n"
@@ -62,8 +71,6 @@ def check_availability():
             )
             send_alert(alert_msg)
 
-    except requests.RequestException as e:
-        print(f"HTTP request error: {e}")
-
 if __name__ == "__main__":
     check_availability()
+    
