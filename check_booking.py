@@ -11,9 +11,14 @@ TARGET_URL = (
     "hop=direct&pf=mobile&src=h&"
 )
 
-NO_RESULT_TEXT = "There were no results found"
+# Target substring to check
+NO_RESULT_SUBSTRING = "there were no results found"
 
 def send_alert(message: str):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Telegram secrets not configured. Alert skipped.")
+        return
+
     telegram_api = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -41,19 +46,21 @@ def check_availability():
     try:
         response = requests.get(TARGET_URL, headers=headers, timeout=20)
         response.raise_for_status()
-        page_html = response.text
 
-        # If the failure text is NOT found, bookings have opened
-        if NO_RESULT_TEXT not in page_html:
+        # Convert entire response body to lowercase for case-insensitive matching
+        page_html_lower = response.text.lower()
+
+        # Check if the "no results" text is contained anywhere in the response
+        if NO_RESULT_SUBSTRING in page_html_lower:
+            print("Status: 'There were no results found' is present. Booking is NOT open yet.")
+        else:
+            print("Status: 'There were no results found' NOT found. Booking is OPEN!")
             alert_msg = (
                 "🚨 <b>Bhagyalaxmi Travels Alert!</b>\n\n"
                 "Booking is <b>OPEN</b> for Pune ➡️ Jalgaon on 05-Nov-2026!\n\n"
                 f"<a href='{TARGET_URL}'>Book Now on Bhagyalaxmi Travels</a>"
             )
-            print("Status: Booking OPEN! Sending alert...")
             send_alert(alert_msg)
-        else:
-            print("Status: 'There were no results found' present. Booking not open yet.")
 
     except requests.RequestException as e:
         print(f"HTTP request error: {e}")
