@@ -8,7 +8,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TARGET_URL = (
     "https://www.bhagyalaxmitravels.com/search?"
     "mode=oneway&fromCity=14|Pune&toCity=197|Jalgaon&"
-    "departDate=05-11-2026&returnDate=03-11-2026&"
+    "departDate=03-11-2026&returnDate=05-11-2026&"
     "hop=direct&pf=mobile&src=h&"
 )
 
